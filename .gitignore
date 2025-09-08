@@ -1,0 +1,12 @@
+.env
+node_modules/
+package-lock.json
+eng.traineddata
+dashboard.html
+index.html
+README.md
+srver.js
+env/
+uploads/
+utils/
+main.js
