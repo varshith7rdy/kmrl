@@ -1,8 +1,16 @@
 import fs from "fs";
 import path from "path";
 import Tesseract from "tesseract.js";
-// import pdf from "pdf-parse";
 import mammoth from "mammoth";
+
+// Import pdf-parse at module level to avoid dynamic import issues
+let pdfParse;
+try {
+  const pdfModule = await import("pdf-parse");
+  pdfParse = pdfModule.default;
+} catch (error) {
+  console.warn("PDF parsing not available:", error.message);
+}
 export async function main(filePath) {
   try {
     const extractedText = await performOCRAndAnalysis(filePath);
@@ -39,8 +47,34 @@ export async function performOCRAndAnalysis(filePath) {
   try {
     switch (fileExtension) {
       case ".pdf":
-        console.log("PDF detected. Skipping pdf-parse for now.");
-        textContent = "PDF processing temporarily skipped.";
+        // Use pre-imported pdf-parse
+        try {
+          if (!pdfParse) {
+            throw new Error("PDF parser not available");
+          }
+          const pdfBuffer = fs.readFileSync(filePath);
+          const pdfData = await pdfParse(pdfBuffer);
+          textContent = pdfData.text;
+          console.log(`PDF processed: ${pdfData.numpages} pages, ${textContent.length} characters`);
+          
+          // If no text extracted, try OCR on PDF as image
+          if (!textContent || textContent.trim().length < 10) {
+            console.log("PDF has minimal text, attempting OCR...");
+            const { data: { text } } = await Tesseract.recognize(filePath, "eng");
+            textContent = text || "No text could be extracted from this PDF";
+          }
+        } catch (pdfError) {
+          console.error("PDF processing error:", pdfError);
+          // Fallback to OCR for scanned PDFs
+          try {
+            console.log("Attempting OCR fallback for PDF...");
+            const { data: { text } } = await Tesseract.recognize(filePath, "eng");
+            textContent = text || "No text could be extracted from this document";
+          } catch (ocrError) {
+            console.error("OCR fallback failed:", ocrError);
+            textContent = "Document processing failed - file may be corrupted or unsupported format";
+          }
+        }
         break;
       case ".jpeg":
       case ".jpg":
@@ -76,7 +110,7 @@ export async function performOCRAndAnalysis(filePath) {
  * @returns {Promise<object>} - A promise that resolves with a structured object containing the analysis.
  */
 export async function analyzeDocumentContent(textContent) {
-  const apiKey = "AIzaSyDfrVnWEt0DRlMakg8KYgnkPtSV7Cxiku0";
+  const apiKey = process.env.GEMINI_API_KEY || "AIzaSyDfrVnWEt0DRlMakg8KYgnkPtSV7Cxiku0";
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
   const systemPrompt = `You are a government-facing document analysis system. Your task is to provide a comprehensive summary, priority assessment, and detailed metadata for a given document's content.`;

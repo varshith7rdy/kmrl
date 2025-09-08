@@ -1,6 +1,7 @@
 import { main } from "../services/ocrService.js";
 import { categorizeAndPrioritize } from "../services/categorizeService.js";
-import { uploadFileToAzure } from "../services/azureService.js"
+import { uploadFileToAzure } from "../services/azureService.js";
+import { sendNotification } from "../services/notificationService.js";
 
 let metadataDB = []; // in-memory metadata storage
 
@@ -32,10 +33,17 @@ export const processFile = async (req, res) => {
     };
     metadataDB.push(metadata);
 
+    // 5. Send notification
+    const notification = sendNotification(metadata);
+
     // Optionally remove local file
     // fs.unlinkSync(localFilePath);
 
-    res.status(200).json({ success: true, metadata });
+    res.status(200).json({ 
+      success: true, 
+      metadata,
+      notification: notification.message
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "File processing failed." });
