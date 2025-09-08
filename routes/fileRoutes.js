@@ -1,11 +1,16 @@
 import express from "express";
-import upload from "../middlewares/uploadMiddleware.js";
-import { processFile, getAllDocuments, getDocumentById } from "../controllers/fileController.js";
+import { uploadMiddleware } from "../middlewares/uploadMiddleware.js";
+import { processFile, getDocuments, downloadFile } from "../controllers/fileController.js";
 
 const router = express.Router();
 
-router.post("/process-file", upload.single("document"), processFile);
-router.get("/documents", getAllDocuments);
-router.get("/documents/:id", getDocumentById);
+// File upload and processing route
+router.post("/process-file", uploadMiddleware, processFile);
+
+// Get all processed documents
+router.get("/documents", getDocuments);
+
+// Download original file
+router.get("/download/:id", downloadFile);
 
 export default router;

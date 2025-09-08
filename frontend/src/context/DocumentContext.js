@@ -20,7 +20,17 @@ export const DocumentProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await axios.get('/api/documents');
-      setDocuments(response.data);
+      const newDocuments = response.data.documents.map(document => ({
+        id: document.id,
+        filename: document.filename,
+        category: document.category,
+        priority: document.priority,
+        analysis: document.analysis,
+        extractedText: document.extractedText,
+        size: document.size,
+        uploadedAt: document.uploadedAt
+      }));
+      setDocuments(newDocuments);
       setError(null);
     } catch (err) {
       console.error('Error fetching documents:', err);

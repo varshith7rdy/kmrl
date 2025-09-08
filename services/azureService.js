@@ -1,4 +1,4 @@
-import { containerClient } from "../utils/azureConfig.js";
+// import { containerClient } from "../utils/azureConfig.js";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 
@@ -8,14 +8,30 @@ import { v4 as uuidv4 } from "uuid";
  * @param {string} originalName 
  * @returns {string} unique ID of the file
  */
+export async function uploadToAzure(localFilePath, originalName) {
+  try {
+    // For demo purposes, return null to skip Azure upload
+    console.log(`Azure upload skipped for demo: ${originalName}`);
+    return null;
+  } catch (error) {
+    console.warn("Azure upload failed:", error.message);
+    return null;
+  }
+}
+
 export async function uploadFileToAzure(localFilePath, originalName) {
-  const uniqueId = uuidv4(); // generate a unique ID
-  const blobName = `${uniqueId}-${originalName}`;
-  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
-  await blockBlobClient.uploadFile(localFilePath);
-
-  return { blobName, uniqueId, url: blockBlobClient.url };
+  try {
+    // For demo purposes, return mock data
+    const uniqueId = uuidv4();
+    return { 
+      blobName: `${uniqueId}-${originalName}`, 
+      uniqueId, 
+      url: `https://demo.blob.core.windows.net/documents/${uniqueId}-${originalName}` 
+    };
+  } catch (error) {
+    console.warn("Azure upload failed:", error.message);
+    return null;
+  }
 }
 
 /**
@@ -24,7 +40,12 @@ export async function uploadFileToAzure(localFilePath, originalName) {
  * @param {string} downloadPath 
  */
 export async function downloadFileFromAzure(blobName, downloadPath) {
-  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-  const downloadResponse = await blockBlobClient.downloadToFile(downloadPath);
-  return downloadPath;
+  try {
+    // For demo purposes, return the download path
+    console.log(`Azure download skipped for demo: ${blobName}`);
+    return downloadPath;
+  } catch (error) {
+    console.warn("Azure download failed:", error.message);
+    return null;
+  }
 }

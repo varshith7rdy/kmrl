@@ -2,15 +2,6 @@ import fs from "fs";
 import path from "path";
 import Tesseract from "tesseract.js";
 import mammoth from "mammoth";
-
-// Import pdf-parse at module level to avoid dynamic import issues
-let pdfParse;
-try {
-  const pdfModule = await import("pdf-parse");
-  pdfParse = pdfModule.default;
-} catch (error) {
-  console.warn("PDF parsing not available:", error.message);
-}
 export async function main(filePath) {
   try {
     const extractedText = await performOCRAndAnalysis(filePath);
@@ -42,58 +33,84 @@ export async function main(filePath) {
 
 export async function performOCRAndAnalysis(filePath) {
   const fileExtension = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath).toLowerCase();
   let textContent = "";
 
   try {
     switch (fileExtension) {
       case ".pdf":
-        // Use pre-imported pdf-parse
+        console.log("PDF file detected - extracting text content:", fileName);
         try {
-          if (!pdfParse) {
-            throw new Error("PDF parser not available");
-          }
+          // Dynamic import to avoid initialization issues
+          const pdfParse = (await import("pdf-parse")).default;
           const pdfBuffer = fs.readFileSync(filePath);
           const pdfData = await pdfParse(pdfBuffer);
           textContent = pdfData.text;
-          console.log(`PDF processed: ${pdfData.numpages} pages, ${textContent.length} characters`);
           
-          // If no text extracted, try OCR on PDF as image
+          // If PDF has no extractable text, keep what we have for AI processing
           if (!textContent || textContent.trim().length < 10) {
-            console.log("PDF has minimal text, attempting OCR...");
-            const { data: { text } } = await Tesseract.recognize(filePath, "eng");
-            textContent = text || "No text could be extracted from this PDF";
+            console.log("PDF contains no extractable text");
+            textContent = `${fileName} - PDF document with no extractable text content`;
           }
         } catch (pdfError) {
-          console.error("PDF processing error:", pdfError);
-          // Fallback to OCR for scanned PDFs
-          try {
-            console.log("Attempting OCR fallback for PDF...");
-            const { data: { text } } = await Tesseract.recognize(filePath, "eng");
-            textContent = text || "No text could be extracted from this document";
-          } catch (ocrError) {
-            console.error("OCR fallback failed:", ocrError);
-            textContent = "Document processing failed - file may be corrupted or unsupported format";
-          }
+          console.log("PDF parsing failed:", pdfError.message);
+          textContent = `${fileName} - PDF document (parsing failed)`;
         }
         break;
       case ".jpeg":
       case ".jpg":
       case ".png":
-        // Use Tesseract.js to recognize text from image files.
-        const { data: { text } } = await Tesseract.recognize(filePath, "eng");
-        textContent = text;
+        console.log("Image file detected - performing OCR:", fileName);
+        try {
+          const { data: { text } } = await Tesseract.recognize(filePath, "eng+mal", {
+            logger: m => console.log(m)
+          });
+          textContent = text;
+          
+          // Keep whatever text was extracted, even if minimal
+          if (!textContent || textContent.trim().length < 5) {
+            console.log("OCR extracted minimal text");
+            textContent = `${fileName} - Image document with minimal readable text`;
+          }
+        } catch (ocrError) {
+          console.log("OCR failed:", ocrError.message);
+          textContent = `${fileName} - Image document (OCR processing failed)`;
+        }
         break;
       case ".docx":
-        // Use mammoth to extract raw text from Word documents.
-        const { value } = await mammoth.extractRawText({ path: filePath });
-        textContent = value;
+        console.log("DOCX file detected - extracting text:", fileName);
+        try {
+          const { value } = await mammoth.extractRawText({ path: filePath });
+          textContent = value;
+          
+          // Keep whatever content was extracted from DOCX
+          if (!textContent || textContent.trim().length < 10) {
+            console.log("DOCX contains minimal text");
+            textContent = `${fileName} - Word document with minimal content`;
+          }
+        } catch (docxError) {
+          console.log("DOCX parsing failed:", docxError.message);
+          textContent = `${fileName} - Word document (parsing failed)`;
+        }
         break;
       case ".txt":
-        // Read text directly from a plain text file.
-        textContent = fs.readFileSync(filePath, "utf-8");
+        console.log("Text file detected - reading content:", fileName);
+        try {
+          textContent = fs.readFileSync(filePath, "utf-8");
+          
+          // Keep whatever content exists in text file
+          if (!textContent || textContent.trim().length < 5) {
+            console.log("Text file is empty or very short");
+            textContent = `${fileName} - Text document with minimal content`;
+          }
+        } catch (txtError) {
+          console.log("Text file reading failed:", txtError.message);
+          textContent = `${fileName} - Text document (reading failed)`;
+        }
         break;
       default:
-        textContent = "Unsupported file type.";
+        console.log("Unsupported file type:", fileExtension);
+        textContent = `${fileName} - Document type ${fileExtension} (unsupported format)`;
         break;
     }
   } catch (error) {
@@ -103,6 +120,7 @@ export async function performOCRAndAnalysis(filePath) {
 
   return textContent;
 }
+
 
 /**
  * Generates a summary, priority, and metadata for a given text content using the Gemini API.

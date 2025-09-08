@@ -17,4 +17,6 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+export const uploadMiddleware = upload.single('document');
 export default upload;

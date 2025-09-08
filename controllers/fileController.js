@@ -1,68 +1,135 @@
-import { main } from "../services/ocrService.js";
-import { categorizeAndPrioritize } from "../services/categorizeService.js";
-import { uploadFileToAzure } from "../services/azureService.js";
+import fs from "fs";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
+import { main as performOCR } from "../services/ocrService.js";
+import { categorizeDocument } from "../services/categorizeService.js";
+import { uploadToAzure } from "../services/azureService.js";
 import { sendNotification } from "../services/notificationService.js";
 
-let metadataDB = []; // in-memory metadata storage
+// In-memory storage for demo (replace with database in production)
+let processedDocuments = [];
 
 export const processFile = async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded." });
-
   try {
-    const { path: localFilePath, originalname } = req.file;
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    // 1. OCR / text extraction
-    const textContent = await main(localFilePath);
+    const filePath = req.file.path;
+    const fileName = req.file.originalname;
+    const fileId = uuidv4();
 
-    // 2. Categorize + priority
-    const { category, priority } = categorizeAndPrioritize(textContent);
+    console.log(`Processing file: ${fileName}`);
 
-    // 3. Upload file to Azure
-    const { blobName, uniqueId, url } = await uploadFileToAzure(localFilePath, originalname);
+    // Perform OCR and analysis
+    const extractedText = await performOCR(filePath);
+    
+    // Categorize the document
+    const { category, priority, analysis } = await categorizeDocument(extractedText, fileName);
 
-    // 4. Save metadata separately
-    const metadata = {
-      id: uniqueId,
-      fileName: originalname,
-      blobName,
-      azureUrl: url,
+    // Upload to Azure (optional - for production)
+    let azureUrl = null;
+    try {
+      azureUrl = await uploadToAzure(filePath, fileName);
+    } catch (azureError) {
+      console.warn("Azure upload failed:", azureError.message);
+    }
+
+    // Create document record
+    const document = {
+      id: fileId,
+      filename: fileName,
       category,
       priority,
-      analysisText: textContent.substring(0, 200) + "...",
-      uploadedAt: new Date()
+      analysis,
+      extractedText,
+      azureUrl,
+      uploadedAt: new Date().toISOString(),
+      filePath: filePath, // Keep local path for download
+      size: req.file.size
     };
-    metadataDB.push(metadata);
 
-    // 5. Send notification
-    const notification = sendNotification(metadata);
+    // Store in memory
+    processedDocuments.push(document);
 
-    // Optionally remove local file
-    // fs.unlinkSync(localFilePath);
+    // Send notification
+    await sendNotification(document);
 
-    res.status(200).json({ 
-      success: true, 
-      metadata,
-      notification: notification.message
+    // Clean up local file after processing (optional)
+    // fs.unlinkSync(filePath);
+
+    res.json({
+      success: true,
+      document: {
+        id: document.id,
+        filename: document.filename,
+        category: document.category,
+        priority: document.priority,
+        analysis: document.analysis,
+        uploadedAt: document.uploadedAt,
+        extractedText: document.extractedText,
+        size: document.size
+      }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "File processing failed." });
+
+  } catch (error) {
+    console.error("File processing error:", error);
+    res.status(500).json({ error: "File processing failed" });
   }
 };
 
-// Fetch metadata list
-export const getAllDocuments = (req, res) => {
-  const sortedDocs = metadataDB.sort((a, b) => {
-    const priorityOrder = { High: 3, Medium: 2, Low: 1 };
-    return priorityOrder[b.priority] - priorityOrder[a.priority];
-  });
-  res.json(sortedDocs);
+export const getDocuments = async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      documents: processedDocuments.map(doc => ({
+        id: doc.id,
+        filename: doc.filename,
+        category: doc.category,
+        priority: doc.priority,
+        analysis: doc.analysis,
+        uploadedAt: doc.uploadedAt,
+        extractedText: doc.extractedText,
+        size: doc.size
+      }))
+    });
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+    res.status(500).json({ error: "Failed to fetch documents" });
+  }
 };
 
-// Fetch single document with metadata and Azure URL
+export const downloadFile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const document = processedDocuments.find(doc => doc.id === id);
+
+    if (!document) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(document.filePath)) {
+      return res.status(404).json({ error: "File not found on server" });
+    }
+
+    // Set appropriate headers
+    res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(document.filePath);
+    fileStream.pipe(res);
+
+  } catch (error) {
+    console.error("File download error:", error);
+    res.status(500).json({ error: "File download failed" });
+  }
+};
+
 export const getDocumentById = (req, res) => {
   const { id } = req.params;
-  const doc = metadataDB.find(d => d.id === id);
+  const doc = processedDocuments.find(d => d.id === id);
   if (!doc) return res.status(404).json({ success: false, message: "Document not found." });
 
   res.json(doc);
