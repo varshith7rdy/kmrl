@@ -128,7 +128,7 @@ export async function performOCRAndAnalysis(filePath) {
  * @returns {Promise<object>} - A promise that resolves with a structured object containing the analysis.
  */
 export async function analyzeDocumentContent(textContent) {
-  const apiKey = process.env.GEMINI_API_KEY || "AIzaSyDfrVnWEt0DRlMakg8KYgnkPtSV7Cxiku0";
+  const apiKey = process.env.GEMINI_API_KEY || "NOTHING";
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
   const systemPrompt = `You are a government-facing document analysis system. Your task is to provide a comprehensive summary, priority assessment, and detailed metadata for a given document's content.`;
